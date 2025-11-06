@@ -1,0 +1,19 @@
+# wrangler.toml (已填入ID的最终版)
+
+name = "my-map-backend"
+main = "src/index.ts"
+compatibility_date = "2024-05-01"
+
+# [重要] D1 数据库绑定
+[[d1_databases]]
+# 注意：我们仍然使用 binding = "DB"，因为我们的代码 (index.ts) 中是通过 env.DB 来访问数据库的，必须保持一致。
+binding = "DB"
+database_name = "locations-db"
+# ↓↓↓ 我已经将您刚刚生成的真实ID填入其中 ↓↓↓
+database_id = "39426274-cf8f-4335-bef2-59e4dcb4c094"
+
+# [重要] 模块规则 (最现代的写法)
+[build]
+module_rules = [
+  { type = "Text", globs = ["**/*.html"] }
+]

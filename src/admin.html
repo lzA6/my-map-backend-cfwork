@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>高性能兴趣点管理系统 (v3.0 - Loca引擎版)</title>
+    <style>
+        /* --- 基础重置和全局样式 --- */
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* --- 布局 --- */
+        #panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 360px;
+            background: #fff;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            transition: width 0.3s;
+        }
+
+        #container {
+            position: absolute;
+            top: 0;
+            left: 360px;
+            right: 0;
+            bottom: 0;
+            transition: left 0.3s;
+        }
+
+        /* --- 响应式设计：适配移动端 --- */
+        @media (max-width: 768px) {
+            #panel {
+                width: 100%;
+                height: 50%;
+                bottom: auto;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            #container {
+                top: 50%;
+                left: 0;
+            }
+        }
+
+        /* --- UI元素样式 --- */
+        h1, h2 {
+            margin-top: 0;
+            font-size: 22px;
+            color: #333;
+        }
+        h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover:not(:disabled) { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #locate-btn { background-color: #28a745; }
+        #locate-btn:hover:not(:disabled) { background-color: #218838; }
+        #add-category-btn { background-color: #17a2b8; margin-top: 0; }
+        #add-category-btn:hover:not(:disabled) { background-color: #138496; }
+        #coordinates { margin-top: 10px; padding: 8px; background-color: #e9ecef; border-radius: 4px; font-size: 14px; word-wrap: break-word; }
+        #poi-form { margin-top: 20px; flex-shrink: 0; }
+
+        /* --- POI 列表样式 --- */
+        #poi-list-section {
+            margin-top: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        .poi-list-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .poi-list-item:last-child { border-bottom: none; }
+        .poi-list-item .color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .poi-list-item .name {
+            flex-grow: 1;
+            font-size: 15px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .poi-list-item .actions button {
+            width: auto;
+            padding: 4px 8px;
+            font-size: 12px;
+            margin: 0 0 0 5px;
+        }
+        .locate-list-btn { background-color: #17a2b8; }
+        .delete-list-btn { background-color: #dc3545; }
+
+        /* --- 自定义信息窗体样式 --- */
+        .custom-infowindow { padding: 15px; width: 280px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.2); border-radius: 8px; }
+        .custom-infowindow h3 { margin: 0 0 10px 0; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .custom-infowindow p { margin: 5px 0; color: #666; }
+        .infowindow-buttons { margin-top: 15px; display: flex; gap: 10px; }
+        .infowindow-buttons button { width: 100%; padding: 8px; font-size: 14px; margin-top: 0; }
+        .infowindow-buttons .nav-btn { background-color: #28a745; }
+        .infowindow-buttons .nav-btn:hover { background-color: #218838; }
+        .infowindow-buttons .del-btn { background-color: #dc3545; }
+        .infowindow-buttons .del-btn:hover { background-color: #c82333; }
+    </style>
+    <script type="text/javascript">
+        window._AMapSecurityConfig = {
+            securityJsCode: '1a0da8559084f2ce2061a3b4f62a6958', // 您的【安全密钥】
+        }
+    </script>
+    <script src="https://webapi.amap.com/loader.js"></script>
+</head>
+<body>
+
+<div id="panel">
+    <h1>高性能兴趣点管理</h1>
+    <button type="button" id="locate-btn">定位到当前位置</button>
+
+    <form id="poi-form">
+        <h2>添加新点</h2>
+        <div class="form-group">
+            <label for="name">名称</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+        <div class="form-group">
+            <label>坐标 (请在地图上点击选择)</label>
+            <div id="coordinates">未选择</div>
+            <input type="hidden" id="longitude" name="longitude">
+            <input type="hidden" id="latitude" name="latitude">
+        </div>
+        <div class="form-group">
+            <label for="category">分类</label>
+            <div style="display: flex; gap: 10px;">
+                <select id="category" name="category" required style="flex-grow: 1;"></select>
+                <button type="button" id="add-category-btn" style="width: auto; padding: 0 15px;">+</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="description">描述</label>
+            <textarea id="description" name="description"></textarea>
+        </div>
+        <button type="submit">添加兴趣点</button>
+    </form>
+
+    <div id="poi-list-section">
+        <h2>已添加列表</h2>
+        <div id="poi-list-container"></div>
+    </div>
+</div>
+
+<div id="container"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- 全局变量定义 ---
+    let map, AMapInstance, loca, labelsLayer;
+    let tempMarker, currentInfoWindow, walking;
+    let allPois = [];
+    let clickTimer = null; // 用于区分单击和双击
+
+    // --- 分类样式和管理 ---
+    let categoryStyles = {
+        '餐饮': { color: '#F57C00' }, '景点': { color: '#4CAF50' },
+        '购物': { color: '#E91E63' }, '住宿': { color: '#2196F3' },
+        '工作': { color: '#9C27B0' }, '其他': { color: '#795548' }
+    };
+    // 用于缓存动态生成的图标
+    const iconCache = {};
+
+    // --- 初始化 ---
+    AMapLoader.load({
+        "key": "2cd33e6dc7abb9b2a4d0e49df316a8df", // 您的【Key】
+        "version": "2.0",
+        "plugins": [
+            "AMap.Geolocation", "AMap.ToolBar", "AMap.Scale", "AMap.HawkEye",
+            "AMap.MapType", "AMap.ControlBar", "AMap.Walking"
+        ],
+        "Loca": { "version": '2.0.0' } // 加载Loca
+    }).then((AMap) => {
+        AMapInstance = AMap;
+        initApp();
+    }).catch(e => {
+        console.error("高德地图或Loca加载失败:", e);
+        alert("高德地图或Loca加载失败，请检查网络或Key是否正确。");
+    });
+
+    function initApp() {
+        createMap([116.397428, 39.90923]);
+        initLocaLayer();
+        loadCategories();
+        loadPoisFromStorage();
+        updateMapAndList();
+        bindEventListeners();
+    }
+
+    // 1. 创建地图实例
+    function createMap(center) {
+        map = new AMapInstance.Map('container', {
+            viewMode: '3D', pitch: 50, zoom: 11, center: center,
+        });
+        map.on('complete', () => {
+            console.log("地图加载完成！");
+            addMapControls();
+        });
+    }
+
+    // 2. 初始化Loca图层 (高性能渲染核心)
+    function initLocaLayer() {
+        loca = new Loca.Container({ map });
+        labelsLayer = new Loca.LabelsLayer({
+            loca,
+            zIndex: 10,
+            collision: true, // 开启标注避让
+            allowCollision: false, // 不允许图标重叠
+        });
+    }
+
+    // 3. 添加地图控件
+    function addMapControls() {
+        map.addControl(new AMapInstance.ToolBar());
+        map.addControl(new AMapInstance.Scale());
+        map.addControl(new AMapInstance.HawkEye({ isOpen: true }));
+        map.addControl(new AMapInstance.MapType());
+        map.addControl(new AMapInstance.ControlBar());
+    }
+
+    // 4. 绑定所有事件监听器
+    function bindEventListeners() {
+        map.on('click', handleMapClick);
+        map.on('dblclick', handleMapDblClick);
+        document.getElementById('locate-btn').addEventListener('click', locateUserAndCenterMap);
+        document.getElementById('poi-form').addEventListener('submit', handleFormSubmit);
+        document.getElementById('add-category-btn').addEventListener('click', handleAddCategory);
+        // 使用事件委托处理列表中的按钮点击
+        document.getElementById('poi-list-container').addEventListener('click', handleListAction);
+    }
+
+    // --- 数据管理 (LocalStorage) ---
+    function loadPoisFromStorage() { allPois = JSON.parse(localStorage.getItem('amap_pois_v3') || '[]'); }
+    function savePoisToStorage() { localStorage.setItem('amap_pois_v3', JSON.stringify(allPois)); }
+
+    // --- 核心更新函数 ---
+    function updateMapAndList() {
+        renderPoisOnMap();
+        renderPoiList();
+        savePoisToStorage();
+    }
+
+    // --- 高性能渲染兴趣点(POI) ---
+    function renderPoisOnMap() {
+        if (!labelsLayer || !allPois) return;
+
+        // 将我们的POI数据转换为GeoJSON格式
+        const geoJson = {
+            type: "FeatureCollection",
+            features: allPois.map(poi => ({
+                type: "Feature",
+                properties: poi, // 将完整POI数据存入properties
+                geometry: {
+                    type: "Point",
+                    coordinates: [poi.longitude, poi.latitude]
+                }
+            }))
+        };
+
+        const geoJsonSource = new Loca.GeoJSONSource({ data: geoJson });
+        labelsLayer.setSource(geoJsonSource);
+
+        // 设置图层样式
+        labelsLayer.setStyle({
+            icon: {
+                type: 'image',
+                image: (index, feature) => {
+                    const category = feature.properties.category;
+                    const color = (categoryStyles[category] || categoryStyles['其他']).color;
+                    return getIcon(color); // 动态获取或生成图标
+                },
+                size: [20, 20],
+                anchor: 'center',
+            },
+            text: {
+                content: (index, feature) => feature.properties.name,
+                style: {
+                    fontSize: 13,
+                    fillColor: '#444',
+                    strokeColor: 'rgba(255,255,255,0.8)',
+                    strokeWidth: 2,
+                },
+                direction: 'bottom',
+            },
+        });
+        loca.add(labelsLayer);
+    }
+
+    // --- 列表管理 ---
+    function renderPoiList() {
+        const container = document.getElementById('poi-list-container');
+        container.innerHTML = '';
+        if (allPois.length === 0) {
+            container.innerHTML = '<p style="color: #999; text-align: center;">暂无数据</p>';
+            return;
+        }
+        allPois.forEach(poi => {
+            const style = categoryStyles[poi.category] || categoryStyles['其他'];
+            const item = document.createElement('div');
+            item.className = 'poi-list-item';
+            item.innerHTML = `
+                <div class="color-dot" style="background-color: ${style.color};"></div>
+                <div class="name" title="${poi.name}">${poi.name}</div>
+                <div class="actions">
+                    <button class="locate-list-btn" data-poi-id="${poi.id}">定位</button>
+                    <button class="delete-list-btn" data-poi-id="${poi.id}">删除</button>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    function handleListAction(e) {
+        const target = e.target;
+        const poiId = target.getAttribute('data-poi-id');
+        if (!poiId) return;
+
+        if (target.classList.contains('locate-list-btn')) {
+            const poi = allPois.find(p => p.id === poiId);
+            if (poi) {
+                map.setZoomAndCenter(17, [poi.longitude, poi.latitude], true);
+            }
+        } else if (target.classList.contains('delete-list-btn')) {
+            handleDeletePoi(poiId);
+        }
+    }
+
+    // --- 交互处理 ---
+    function handleMapClick(e) {
+        clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => {
+            // 单击逻辑
+            const feature = labelsLayer.queryFeature(e.pixel.toArray());
+            if (feature) {
+                openInfoWindow(feature);
+            } else {
+                // 点击地图空白处
+                if (currentInfoWindow) currentInfoWindow.close();
+                updateCoordinatesForForm(e.lnglat);
+            }
+        }, 250); // 250ms延迟以区分双击
+    }
+
+    function handleMapDblClick(e) {
+        clearTimeout(clickTimer);
+        // 双击逻辑
+        const feature = labelsLayer.queryFeature(e.pixel.toArray());
+        if (feature) {
+            map.setZoomAndCenter(18, feature.geometry.coordinates, true);
+        }
+    }
+
+    function updateCoordinatesForForm(lnglat) {
+        const lng = lnglat.getLng();
+        const lat = lnglat.getLat();
+        document.getElementById('longitude').value = lng;
+        document.getElementById('latitude').value = lat;
+        document.getElementById('coordinates').textContent = `经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}`;
+        if (!tempMarker) {
+            tempMarker = new AMapInstance.Marker({
+                icon: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png', map: map
+            });
+        }
+        tempMarker.setPosition(lnglat);
+    }
+
+    function openInfoWindow(feature) {
+        if (currentInfoWindow) currentInfoWindow.close();
+        const poi = feature.properties;
+        const style = categoryStyles[poi.category] || categoryStyles['其他'];
+        const infoWindowContent = `
+            <div class="custom-infowindow">
+                <h3>${poi.name}</h3>
+                <p><strong>分类:</strong> <span style="color:${style.color};">${poi.category}</span></p>
+                <p><strong>描述:</strong> ${poi.description || '无'}</p>
+                <div class="infowindow-buttons">
+                    <button class="nav-btn" onclick="window.startNavigation('${poi.id}')">到这里去</button>
+                    <button class="del-btn" onclick="window.handleDeletePoi('${poi.id}')">删除此点</button>
+                </div>
+            </div>`;
+        currentInfoWindow = new AMapInstance.InfoWindow({
+            content: infoWindowContent, isCustom: true, offset: new AMapInstance.Pixel(0, -20)
+        });
+        currentInfoWindow.open(map, feature.geometry.coordinates);
+    }
+
+    // --- 表单与数据操作 ---
+    function handleFormSubmit(e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const newPoi = {
+            id: 'poi_' + Date.now(),
+            name: formData.get('name'),
+            longitude: parseFloat(formData.get('longitude')),
+            latitude: parseFloat(formData.get('latitude')),
+            category: formData.get('category'),
+            description: formData.get('description')
+        };
+        if (!newPoi.latitude || !newPoi.longitude) {
+            alert('请在地图上点击选择一个位置！'); return;
+        }
+        allPois.push(newPoi);
+        updateMapAndList();
+        alert('添加成功！');
+        e.target.reset();
+        document.getElementById('coordinates').textContent = '未选择';
+        if (tempMarker) { tempMarker.setMap(null); tempMarker = null; }
+    }
+
+    window.handleDeletePoi = (poiId) => {
+        if (!confirm('确定要删除这个兴趣点吗？')) return;
+        allPois = allPois.filter(p => p.id !== poiId);
+        if (currentInfoWindow) currentInfoWindow.close();
+        updateMapAndList();
+        alert('删除成功！');
+    };
+
+    // --- 分类管理 ---
+    function loadCategories() {
+        const saved = localStorage.getItem('amap_categories_v3');
+        if (saved) categoryStyles = JSON.parse(saved);
+        updateCategoryDropdown();
+    }
+    function saveCategories() { localStorage.setItem('amap_categories_v3', JSON.stringify(categoryStyles)); }
+    function updateCategoryDropdown() {
+        const select = document.getElementById('category');
+        select.innerHTML = '';
+        Object.keys(categoryStyles).forEach(name => {
+            const option = document.createElement('option');
+            option.value = name; option.textContent = name;
+            select.appendChild(option);
+        });
+    }
+    function handleAddCategory() {
+        const name = prompt('请输入新的分类名称：');
+        if (name && !categoryStyles[name]) {
+            const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+            categoryStyles[name] = { color };
+            saveCategories();
+            updateCategoryDropdown();
+            alert(`分类 "${name}" 添加成功！`);
+        } else if (categoryStyles[name]) {
+            alert('该分类已存在！');
+        }
+    }
+
+    // --- 导航与定位 ---
+    window.startNavigation = (poiId) => {
+        const poi = allPois.find(p => p.id === poiId);
+        if (!poi) return;
+        if (currentInfoWindow) currentInfoWindow.close();
+        if (walking) walking.clear();
+        alert('正在获取您当前位置以规划步行路线...');
+        const geolocation = new AMapInstance.Geolocation({ enableHighAccuracy: true, timeout: 10000 });
+        geolocation.getCurrentPosition((status, result) => {
+            if (status === 'complete') {
+                if (!walking) walking = new AMapInstance.Walking({ map: map, panel: null });
+                walking.search(result.position, [poi.longitude, poi.latitude], (s, res) => {
+                    if (s === 'complete' && res.routes && res.routes.length) {
+                        const route = res.routes[0];
+                        const distance = (route.distance / 1000).toFixed(2);
+                        const time = Math.round(route.time / 60);
+                        alert(`路线规划成功！\n距离: 约 ${distance} 公里\n步行预计: 约 ${time} 分钟`);
+                    } else { alert('路线规划失败：' + res.info); }
+                });
+            } else { alert('定位失败，无法规划路线。原因：' + result.message); }
+        });
+    };
+
+    function locateUserAndCenterMap() {
+        const btn = document.getElementById('locate-btn');
+        btn.textContent = '正在定位...'; btn.disabled = true;
+        const geolocation = new AMapInstance.Geolocation({ enableHighAccuracy: true, timeout: 10000, zoomToAccuracy: true });
+        geolocation.getCurrentPosition((status, result) => {
+            btn.textContent = '定位到当前位置'; btn.disabled = false;
+            if (status === 'complete') {
+                map.setCenter(result.position); alert("定位成功！");
+            } else {
+                let msg = "定位失败：" + result.info;
+                if (window.location.protocol !== 'https:') msg += '\n\n[重要提示]：定位功能通常需要HTTPS安全环境。';
+                alert(msg); console.error("定位失败:", result);
+            }
+        });
+    }
+
+    // --- 辅助函数：动态生成图标 ---
+    function getIcon(color) {
+        if (!iconCache[color]) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 20;
+            canvas.height = 20;
+            const context = canvas.getContext('2d');
+            context.fillStyle = color;
+            context.strokeStyle = 'white';
+            context.lineWidth = 2;
+            context.beginPath();
+            context.arc(10, 10, 8, 0, 2 * Math.PI);
+            context.fill();
+            context.stroke();
+            iconCache[color] = canvas.toDataURL('image/png');
+        }
+        return iconCache[color];
+    }
+});
+</script>
+
+</body>
+</html>
